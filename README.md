@@ -8,7 +8,7 @@ analysis behind:
 > After Infection.** *Clinical Infectious Diseases* 2025;81(6):1041–9.
 > https://doi.org/10.1093/cid/ciaf345
 
-## What this is
+## Summary
 
 A retrospective cohort study using OMOP-formatted EHR data from the Montefiore
 Health System (Bronx, NY) to test whether COVID-19 infection increases the
