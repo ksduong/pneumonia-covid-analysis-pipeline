@@ -16,6 +16,11 @@ long-term risk of new-onset pneumonia, using propensity-matched controls and
 Cox proportional hazards models. K.S.D. performed the cohort construction,
 matching, survival analysis, and Cox modeling reported in the paper.
 
+![Cumulative incidence of new-onset pneumonia, COVID+ vs. matched COVID- controls, generated from the synthetic sample data](docs/figures/cumulative_incidence_synthetic.png)
+
+*Output of stage 3 run on the **synthetic** sample data. It shows what the
+pipeline produces, not the study's results (see Published Results below).*
+
 ## Data availability
 
 **No patient data is included in this repository.** The underlying dataset is
@@ -39,8 +44,8 @@ matching → survival/hazard analysis.
 |---|---|---|---|---|
 | — | `sql/*.sql` | OMOP queries: cohort identification, outcome definition, comorbidities/demographics | OMOP CDM tables | raw extracts |
 | 1 | `src/01_cohort_selection.py` | New-onset pneumonia determination, demographics, comorbidities, hospitalization stratification (COVID+ only) | `data/sample/omop_extracts/` | `cohort_positive.csv`, `cohort_negative.csv` |
-| 2 | `src/02_propensity_matching.py` | 1:2 propensity-score matching on age, sex, race/ethnicity, observation time | `cohort_positive.csv`, `cohort_negative.csv` | `matched_cohort_1to2.csv` |
-| 3 | `src/03_survival_analysis.py` | Builds the analytic table; Kaplan-Meier cumulative incidence, censored at 46 months | `matched_cohort_1to2.csv` | `matched_binary_data.csv`, `figures/cumulative_incidence.png` |
+| 2 | `src/02_propensity_matching.py` | 1:2 propensity-score matching on age, sex, race/ethnicity, observation time; controls must fall within a caliper of 0.15 × SD of the propensity score | `cohort_positive.csv`, `cohort_negative.csv` | `matched_cohort_1to2.csv` |
+| 3 | `src/03_survival_analysis.py` | Builds the analytic table; Kaplan-Meier cumulative incidence, with administrative censoring at 46 months (events after 46 months are censored, not counted) | `matched_cohort_1to2.csv` | `matched_binary_data.csv`, `figures/cumulative_incidence.png` |
 | 4 | `src/04_cox_models.py` | Univariate + multivariate Cox proportional hazards models | `matched_binary_data.csv` | `cox_univariate.csv`, `cox_multivariate.csv` |
 
 **Note on pipeline order vs. the original notebooks:** in the original
@@ -92,7 +97,8 @@ cd src
 python 01_cohort_selection.py --data-dir ../data/sample/omop_extracts --out-dir ../results/cohort_selection
 cp ../results/cohort_selection/cohort_positive.csv ../results/cohort_selection/cohort_negative.csv ../data/sample/
 python 02_propensity_matching.py --data-dir ../data/sample --out-dir ../results/matching --ratio 1:2
-python 03_survival_analysis.py --input ../results/matching/matched_cohort_1to2.csv --out-dir ../results
+python 03_survival_analysis.py --input ../results/matching/matched_cohort_1to2.csv --out-dir ../results \
+    --subtitle "Synthetic sample data (illustrative only, not study results)"
 python 04_cox_models.py --input ../results/matched_binary_data.csv --out-dir ../results
 ```
 
@@ -103,6 +109,20 @@ model summaries) — see `tests/test_pipeline.py` for unit tests.
 ```bash
 pytest tests/
 ```
+
+## Changes from the original analysis code
+
+- **Caliper enforcement (stage 2).** The original code passed the caliper to
+  scikit-learn's `NearestNeighbors` as `radius=`, which `kneighbors()` ignores,
+  so no match was ever rejected for distance. The caliper is now checked
+  explicitly on the propensity score (`_within_caliper()`), which leaves some
+  cases unmatched.
+- **46-month cutoff (stage 3).** Durations were clipped at 46 months, but
+  events after 46 months were still counted as events. They are now censored
+  at the cutoff.
+- Both fixes have unit tests in `tests/test_pipeline.py`. The published
+  results came from the original code, and the real data is not available
+  to re-run them.
 
 ## Published Results (not reproducible from the synthetic sample)
 

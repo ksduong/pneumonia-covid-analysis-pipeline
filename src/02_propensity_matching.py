@@ -8,9 +8,14 @@ Two ratios were used over the course of this project:
   - 1:1 matching (`match_1_to_1`): initial approach
   - 1:2 matching (`match_1_to_2`): final method used in paper
 
-Method: logistic-regression propensity score -> logit transform -> caliper
-= 0.15 * SD(propensity score) -> nearest-neighbor matching without
-replacement, ball-tree algorithm.
+Method: logistic-regression propensity score -> logit transform ->
+nearest-neighbor candidate search (ball tree) -> greedy matching without
+replacement, keeping only controls whose propensity score is within the
+caliper (0.15 * SD of the propensity score) of the case's score.
+
+Note: an earlier version passed the caliper to NearestNeighbors as
+`radius=`, which `kneighbors()` ignores, so the caliper was never applied.
+The caliper is now enforced explicitly in `_within_caliper()`.
 """
 
 import argparse
@@ -61,13 +66,18 @@ def _fit_propensity_scores(cohort: pd.DataFrame) -> pd.DataFrame:
     return cohort
 
 
+def _within_caliper(cohort: pd.DataFrame, case_idx: int, control_idx: int, caliper: float) -> bool:
+    """True if the control's propensity score is within `caliper` of the case's."""
+    return abs(cohort.at[case_idx, "ps"] - cohort.at[control_idx, "ps"]) <= caliper
+
+
 def match_1_to_1(cohort: pd.DataFrame) -> pd.DataFrame:
     cohort = _fit_propensity_scores(cohort)
     caliper = np.std(cohort["ps"]) * CALIPER_MULTIPLIER
 
     features = ["ps_logit"] + MATCH_FEATURES
     n_neighbors = min(N_NEIGHBORS, len(cohort))
-    knn = NearestNeighbors(n_neighbors=n_neighbors, algorithm="ball_tree", radius=caliper)
+    knn = NearestNeighbors(n_neighbors=n_neighbors, algorithm="ball_tree")
     knn.fit(cohort[features])
     _, indexes = knn.kneighbors(cohort[features])
 
@@ -77,7 +87,8 @@ def match_1_to_1(cohort: pd.DataFrame) -> pd.DataFrame:
         current = row.name
         for idx in indexes[current, :]:
             if idx in cohort.index and idx != current and row["covid_status"] == 1 \
-                    and cohort.loc[idx, "covid_status"] == 0 and idx not in exclude:
+                    and cohort.loc[idx, "covid_status"] == 0 and idx not in exclude \
+                    and _within_caliper(cohort, current, idx, caliper):
                 exclude.add(idx)
                 return int(idx)
         return np.nan
@@ -94,7 +105,7 @@ def match_1_to_2(cohort: pd.DataFrame) -> pd.DataFrame:
 
     features = ["ps_logit"] + MATCH_FEATURES
     n_neighbors = min(N_NEIGHBORS, len(cohort))
-    knn = NearestNeighbors(n_neighbors=n_neighbors, algorithm="ball_tree", radius=caliper)
+    knn = NearestNeighbors(n_neighbors=n_neighbors, algorithm="ball_tree")
     knn.fit(cohort[features])
     _, indexes = knn.kneighbors(cohort[features])
 
@@ -107,7 +118,8 @@ def match_1_to_2(cohort: pd.DataFrame) -> pd.DataFrame:
             return np.nan
         for idx in indexes[current, :]:
             if idx in cohort.index and idx != current \
-                    and cohort.loc[idx, "covid_status"] == 0 and idx not in exclude:
+                    and cohort.loc[idx, "covid_status"] == 0 and idx not in exclude \
+                    and _within_caliper(cohort, current, idx, caliper):
                 exclude.add(idx)
                 matches.append(int(idx))
                 if len(matches) == 2:

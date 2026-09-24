@@ -52,6 +52,11 @@ def build_analytic_table(data: pd.DataFrame) -> pd.DataFrame:
         (data["new_pneumonia_date"] - data["index"]).dt.days / 30,
         (data["return_date"] - data["index"]).dt.days / 30,
     )
+    # administrative censoring at the follow-up cutoff: events after the cutoff
+    # are not counted -- those patients are censored at the cutoff instead
+    after_cutoff = data["duration"] > FOLLOWUP_CUTOFF_MONTHS
+    data.loc[after_cutoff, "new_pneumonia_status"] = 0
+    data.loc[after_cutoff, "new_pneumonia_date"] = pd.NaT
     data["duration"] = data["duration"].clip(upper=FOLLOWUP_CUTOFF_MONTHS)
 
     keep = ["person_id", "age", "covid_status", "new_pneumonia_status", "duration",
@@ -63,7 +68,7 @@ def build_analytic_table(data: pd.DataFrame) -> pd.DataFrame:
     return data[[c for c in keep if c in data.columns]]
 
 
-def plot_cumulative_incidence(data: pd.DataFrame, out_path: Path):
+def plot_cumulative_incidence(data: pd.DataFrame, out_path: Path, subtitle: str = ""):
     covid_positive = data[data["covid_status"] == 1]
     covid_negative = data[data["covid_status"] == 0]
 
@@ -88,10 +93,13 @@ def plot_cumulative_incidence(data: pd.DataFrame, out_path: Path):
     ax.set_xticks(xticks)
     ax.set_xlim([0, FOLLOWUP_CUTOFF_MONTHS + 4])
 
-    ax.set_title("Cumulative Incidence Function for New-Onset Pneumonia", fontsize=17)
+    title = "Cumulative Incidence Function for New-Onset Pneumonia"
+    if subtitle:
+        title += f"\n{subtitle}"
+    ax.set_title(title, fontsize=17)
     ax.yaxis.set_major_formatter(ticker.PercentFormatter(xmax=1.0, decimals=1, symbol="%"))
 
-    add_at_risk_counts(kmf_covid, kmf_control, ax=ax, fontsize=12, ypos=-0.3)
+    add_at_risk_counts(kmf_covid, kmf_control, ax=ax, fontsize=12, ypos=-0.9)
 
     fig.tight_layout()
     fig.savefig(out_path, dpi=300, bbox_inches="tight")
@@ -103,6 +111,8 @@ def main():
     parser.add_argument("--input", type=Path, default=Path("results/matching/matched_cohort_1to2.csv"),
                          help="Matched cohort from 02_propensity_matching.py")
     parser.add_argument("--out-dir", type=Path, default=Path("results"))
+    parser.add_argument("--subtitle", default="",
+                         help='Optional second title line, e.g. "Synthetic sample data (illustrative only)"')
     args = parser.parse_args()
     args.out_dir.mkdir(parents=True, exist_ok=True)
     (args.out_dir / "figures").mkdir(parents=True, exist_ok=True)
@@ -110,7 +120,8 @@ def main():
     matched = pd.read_csv(args.input)
     analytic = build_analytic_table(matched)
     analytic.to_csv(args.out_dir / "matched_binary_data.csv", index=False)
-    plot_cumulative_incidence(analytic, args.out_dir / "figures" / "cumulative_incidence.png")
+    plot_cumulative_incidence(analytic, args.out_dir / "figures" / "cumulative_incidence.png",
+                              subtitle=args.subtitle)
 
     print(f"Analytic table: {len(analytic)} patients, "
           f"{analytic['new_pneumonia_status'].sum()} new-onset pneumonia events")

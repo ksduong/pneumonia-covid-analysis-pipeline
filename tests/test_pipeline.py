@@ -16,6 +16,7 @@ from importlib import import_module
 
 cohort_selection = import_module("01_cohort_selection")
 matching = import_module("02_propensity_matching")
+survival = import_module("03_survival_analysis")
 
 
 def test_flag_new_onset_pneumonia_excludes_prior_condition():
@@ -86,6 +87,48 @@ def test_match_1_to_2_produces_two_controls_per_case():
     # not every case is guaranteed a match (caliper-dependent), but every
     # matched case should have brought exactly two controls with it
     assert n_controls == 2 * n_cases
+
+
+
+def test_match_1_to_2_enforces_caliper():
+    # two tight clusters on every feature: cases/controls inside a cluster
+    # are near each other, but no control is near the lone outlier case
+    rows = []
+    for i in range(10):
+        rows.append(dict(covid_status=1, age=40, follow_up_time_days=300))
+    for i in range(40):
+        rows.append(dict(covid_status=0, age=40, follow_up_time_days=300))
+    rows.append(dict(covid_status=1, age=90, follow_up_time_days=1400))  # outlier case
+    cohort = pd.DataFrame(rows)
+    cohort["person_id"] = range(len(cohort))
+    for col in ["gender", "hispanic", "non_hispanic", "white", "black", "asian", "other"]:
+        cohort[col] = 0
+    matched = matching.match_1_to_2(cohort)
+    ps = matching._fit_propensity_scores(cohort)["ps"]
+    caliper = np.std(ps) * matching.CALIPER_MULTIPLIER
+    # every matched control is within the caliper of its own case
+    cases = matched[matched["covid_status"] == 1]
+    assert len(cases) > 0
+    for _, case in cases.iterrows():
+        for control_idx in case["matched"]:
+            assert abs(case["ps"] - ps[control_idx]) <= caliper
+    # the outlier case has no control within the caliper, so it stays unmatched
+    assert len(cohort) - 1 not in set(cases["person_id"])
+
+
+def test_events_after_cutoff_are_censored():
+    data = pd.DataFrame({
+        "person_id": [1, 2],
+        "covid_status": [1, 1],
+        "covid_date": ["2020-04-01", "2020-04-01"],
+        "index_date": [None, None],
+        "pneumonia_date": ["2021-04-01", "2024-12-01"],  # ~12 months vs ~56 months
+        "return_date": ["2025-01-01", "2025-01-01"],
+    })
+    out = survival.build_analytic_table(data).set_index("person_id")
+    assert out.loc[1, "new_pneumonia_status"] == 1
+    assert out.loc[2, "new_pneumonia_status"] == 0  # event after 46 months -> censored
+    assert out.loc[2, "duration"] == survival.FOLLOWUP_CUTOFF_MONTHS
 
 
 if __name__ == "__main__":

@@ -62,8 +62,11 @@ def _make_cohort(n, status, person_id_start):
 
     gender = (rng.random(n) < MALE_RATE[status_key]).astype(int)  # 1 = male
 
-    covid_dates = _random_dates(n) if status == 1 else [pd.NaT] * n
     index_dates = _random_dates(n)
+    # COVID+ patients are indexed on their positive test, so covid_date must
+    # equal index_date -- otherwise return_date can fall before covid_date and
+    # produce negative follow-up durations downstream
+    covid_dates = list(index_dates) if status == 1 else [pd.NaT] * n
     return_offsets = rng.integers(30, 900, size=n)
     return_dates = [idx + timedelta(days=int(o)) for idx, o in zip(index_dates, return_offsets)]
     death_dates = [pd.NaT] * n
