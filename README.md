@@ -109,20 +109,6 @@ model summaries) — see `tests/test_pipeline.py` for unit tests.
 pytest tests/
 ```
 
-## Changes from the original analysis code
-
-- **Caliper enforcement (stage 2).** The original code passed the caliper to
-  scikit-learn's `NearestNeighbors` as `radius=`, which `kneighbors()` ignores,
-  so no match was ever rejected for distance. The caliper is now checked
-  explicitly on the propensity score (`_within_caliper()`), which leaves some
-  cases unmatched.
-- **46-month cutoff (stage 3).** Durations were clipped at 46 months, but
-  events after 46 months were still counted as events. They are now censored
-  at the cutoff.
-- Both fixes have unit tests in `tests/test_pipeline.py`. The published
-  results came from the original code, and the real data is not available
-  to re-run them.
-
 ## Published Results (not reproducible from the synthetic sample)
 
 - Hospitalized COVID-19 patients: aHR 3.67 (95% CI 3.27–4.15) for new-onset pneumonia vs. controls
