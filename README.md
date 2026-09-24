@@ -18,8 +18,7 @@ matching, survival analysis, and Cox modeling reported in the paper.
 
 ![Cumulative incidence of new-onset pneumonia, COVID+ vs. matched COVID- controls, generated from the synthetic sample data](docs/figures/cumulative_incidence_synthetic.png)
 
-*Output of stage 3 run on the **synthetic** sample data. It shows what the
-pipeline produces, not the study's results (see Published Results below).*
+*Output of stage 3 run on synthetic sample data (see Published Results below).*
 
 ## Data availability
 
